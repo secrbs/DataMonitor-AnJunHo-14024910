@@ -1,68 +1,62 @@
 # DataMonitor
 
-PoC: 콘솔 기반 실시간 데이터 모니터링 Tool
+PoC: 콘솔 실시간 모니터링 UI 컴포넌트
 
 ## 목적
 
-`data/` 디렉토리의 JSON 파일들을 주기적으로 자동 갱신하여 현재 데이터 상태를 실시간으로 보여주는 관리자 도구.
+데이터를 **어떻게 콘솔에 보여줄 것인가**만을 검증하는 PoC.  
+데이터를 읽거나 파싱하는 것은 이 PoC의 관심사가 아니다.  
+`DataProvider` 콜백으로 데이터를 주입받아 화면에 출력하는 UI 레이어만 독립적으로 구현한다.
+
+실제 앱에서는 Repository(PoC-2)와 조합하여 사용한다.
 
 ## 구조
 
 ```
 src/
 ├── monitor/
-│   ├── JsonFileMonitor.h
-│   └── JsonFileMonitor.cpp  - 자동 갱신 대시보드 구현
-└── main.cpp
-include/
-└── nlohmann/json.hpp
-data/
-└── (모니터링 대상 JSON 파일 위치)
+│   ├── TableRenderer.h/.cpp   - 테이블 렌더링 (컬럼 정렬, 구분선)
+│   ├── ConsoleMonitor.h/.cpp  - 화면 갱신 루프, 키입력 처리
+└── main.cpp                   - 하드코딩 더미 데이터로 컴포넌트 검증
 ```
 
-## 동작 방식
+## 핵심 인터페이스
 
-- 지정된 주기(기본 3초)마다 화면을 지우고 전체 JSON 파일을 다시 읽어 출력
-- 메인 앱(SampleOrderSystem)이 데이터를 변경하면 자동으로 반영
+```cpp
+// 데이터 공급 콜백 — 앱에서 실제 데이터로 구현
+using DataProvider = std::function<std::vector<Section>()>;
+
+// 실행: dataProvider를 주기적으로 호출하여 화면 갱신
+monitor.run(dataProvider);
+```
+
+## 동작
+
+- N초(기본 3초)마다 `dataProvider()`를 호출 → 화면 전체 갱신
 - `[R]` 즉시 갱신 / `[Q]` 종료
 
 ```
-╔══════════════════════════════════════════════════╗
-║          DataMonitor  [실시간 데이터 조회]        ║
-╚══════════════════════════════════════════════════╝
+╔══════════════════════════════════════════╗
+║       Console Monitor [실시간 조회]       ║
+╚══════════════════════════════════════════╝
   갱신 시각 : 2026-05-08 09:32:15
-  갱신 주기 : 3초  |  [R] 즉시 갱신  [Q] 종료
-  경로      : C:\...\data
+  갱신 주기 : 3초  [R] 즉시갱신  [Q] 종료
 
-┌─ orders.json ── 3건 ──────────────────────────────┐
-  +----+----------+--------------+----------+----------+
-  | id | sampleId | customerName | quantity | status   |
-  +----+----------+--------------+----------+----------+
-  | 1  | S-001    | 삼성전자     | 200      | RESERVED |
-  | 2  | S-002    | SK하이닉스   | 150      | CONFIRMED|
-  +----+----------+--------------+----------+----------+
-
-┌─ samples.json ── 2건 ─────────────────────────────┐
-  ...
+[ 시료 목록 ]
+  +--------+----------------------+--------+--------+
+  | ID     | 이름                 | 수율   | 재고   |
+  +--------+----------------------+--------+--------+
+  | S-001  | 실리콘 웨이퍼-8인치  | 0.92   | 480    |
+  +--------+----------------------+--------+--------+
+  총 3건
 ```
 
 ## 빌드
 
-**Visual Studio 2022**
-- `DataMonitor.sln` 열기 → 빌드
+**Visual Studio 2022**  
+`DataMonitor.sln` 열기 → 빌드
 
 **커맨드라인 (MSVC)**
 ```bat
-cl /std:c++17 /EHsc /I include src/main.cpp src/monitor/JsonFileMonitor.cpp /Fe:DataMonitor.exe
+cl /std:c++17 /EHsc src/main.cpp src/monitor/ConsoleMonitor.cpp src/monitor/TableRenderer.cpp /Fe:DataMonitor.exe
 ```
-
-## 실행
-
-```
-DataMonitor.exe [data_directory] [refresh_seconds]
-```
-
-| 인자 | 설명 | 기본값 |
-|------|------|--------|
-| data_directory | JSON 파일 디렉토리 경로 | `data` |
-| refresh_seconds | 자동 갱신 주기 (초) | `3` |
