@@ -1,48 +1,72 @@
 #include <iostream>
-#include <vector>
+#include <fstream>
 #include <string>
+#include <filesystem>
+#include <nlohmann/json.hpp>
 #include "monitor/ConsoleMonitor.h"
 
-// 데이터 공급 예시 — 실제 앱에서는 Repository 등에서 읽어와 Section 으로 변환
-std::vector<Section> provideDummyData() {
-    Section samples;
-    samples.title = "시료 목록";
-    samples.columns = {
-        {"ID",           6},
-        {"이름",        20},
-        {"평균생산시간", 14},
-        {"수율",         6},
-        {"재고",         6},
-    };
-    samples.rows = {
-        {"S-001", "실리콘 웨이퍼-8인치", "0.5 min/ea", "0.92", "480"},
-        {"S-002", "GaN 에피택셜-4인치",  "0.3 min/ea", "0.78", "220"},
-        {"S-003", "SiC 파워기판-6인치",  "0.8 min/ea", "0.92",  "30"},
-    };
+namespace fs = std::filesystem;
 
-    Section orders;
-    orders.title = "주문 현황";
-    orders.columns = {
-        {"주문번호",       18},
-        {"고객",          14},
-        {"시료",          20},
-        {"수량",           6},
-        {"상태",          10},
-    };
-    orders.rows = {
-        {"ORD-20260508-0001", "삼성전자 파운드리", "SiC 파워기판-6인치", "200", "RESERVED"},
-        {"ORD-20260508-0002", "SK하이닉스",       "실리콘 웨이퍼-8인치","150", "CONFIRMED"},
-        {"ORD-20260508-0003", "LG이노텍",         "GaN 에피택셜-4인치", "300", "PRODUCING"},
-    };
+// JSON 배열 파일을 읽어 Section으로 변환
+Section loadSection(const std::string& filePath) {
+    Section section;
+    section.title = fs::path(filePath).filename().string();
 
-    return {samples, orders};
+    std::ifstream f(filePath);
+    if (!f.is_open()) return section;
+
+    nlohmann::json data;
+    try { f >> data; } catch (...) { return section; }
+
+    if (data.empty() || !data[0].is_object()) return section;
+
+    // 첫 번째 객체의 키를 컬럼으로 사용
+    for (auto& [key, _] : data[0].items())
+        section.columns.push_back({key, key.size()});
+
+    // 각 행의 값 추출 및 컬럼 너비 계산
+    for (const auto& row : data) {
+        std::vector<std::string> cells;
+        for (size_t i = 0; i < section.columns.size(); ++i) {
+            std::string val = row.contains(section.columns[i].header)
+                ? row[section.columns[i].header].dump() : "-";
+            if (val.size() >= 2 && val.front() == '"' && val.back() == '"')
+                val = val.substr(1, val.size() - 2);
+            section.columns[i].width = std::max(section.columns[i].width, val.size());
+            cells.push_back(val);
+        }
+        section.rows.push_back(cells);
+    }
+
+    return section;
+}
+
+// data 디렉토리의 JSON 파일 전체를 읽어 Section 목록으로 반환
+std::vector<Section> readDataDir(const std::string& dataDir) {
+    std::vector<Section> sections;
+    if (!fs::exists(dataDir)) return sections;
+
+    std::vector<std::string> files;
+    for (const auto& entry : fs::directory_iterator(dataDir))
+        if (entry.path().extension() == ".json")
+            files.push_back(entry.path().string());
+    std::sort(files.begin(), files.end());
+
+    for (const auto& f : files)
+        sections.push_back(loadSection(f));
+
+    return sections;
 }
 
 int main(int argc, char* argv[]) {
+    std::string dataDir = "data";
     int refreshSeconds = 3;
-    if (argc > 1) refreshSeconds = std::stoi(argv[1]);
+
+    if (argc > 1) dataDir = argv[1];
+    if (argc > 2) refreshSeconds = std::stoi(argv[2]);
 
     ConsoleMonitor monitor(refreshSeconds);
-    monitor.run(provideDummyData);
+    monitor.run([&]() { return readDataDir(dataDir); });
+
     return 0;
 }

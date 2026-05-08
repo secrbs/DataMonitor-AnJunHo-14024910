@@ -1,30 +1,25 @@
 # DataMonitor
 
-콘솔 실시간 모니터링 UI 컴포넌트
+현재 저장된 데이터 상태를 콘솔에서 실시간 조회하는 관리자 도구
 
 ## 구조
 
 ```
 src/
 ├── monitor/
-│   ├── TableRenderer.h/.cpp   - 테이블 렌더링 (컬럼 정렬, 구분선)
+│   ├── TableRenderer.h/.cpp   - 테이블 렌더링
 │   └── ConsoleMonitor.h/.cpp  - 화면 갱신 루프, 키입력 처리
-└── main.cpp
-```
-
-## 핵심 인터페이스
-
-```cpp
-// 데이터 공급 콜백
-using DataProvider = std::function<std::vector<Section>()>;
-
-// 실행: dataProvider를 주기적으로 호출하여 화면 갱신
-monitor.run(dataProvider);
+└── main.cpp                   - data/ 디렉토리 JSON 파일 읽기 → ConsoleMonitor 연결
+include/
+└── nlohmann/json.hpp
+data/
+└── (모니터링 대상 JSON 파일 위치)
 ```
 
 ## 동작
 
-- N초(기본 3초)마다 `dataProvider()`를 호출하여 화면 전체 갱신
+- `data/` 디렉토리의 JSON 파일을 N초마다 다시 읽어 화면 갱신
+- 파일이 변경되면 다음 갱신 주기에 자동 반영
 - `[R]` 즉시 갱신 / `[Q]` 종료
 
 ```
@@ -34,12 +29,12 @@ monitor.run(dataProvider);
   갱신 시각 : 2026-05-08 09:32:15
   갱신 주기 : 3초  [R] 즉시갱신  [Q] 종료
 
-[ 시료 목록 ]
-  +--------+----------------------+--------+--------+
-  | ID     | 이름                 | 수율   | 재고   |
-  +--------+----------------------+--------+--------+
-  | S-001  | 실리콘 웨이퍼-8인치  | 0.92   | 480    |
-  +--------+----------------------+--------+--------+
+[ orders.json ]
+  +--------------------+----------+------------------+----------+----------+
+  | orderId            | sampleId | customerName     | quantity | status   |
+  +--------------------+----------+------------------+----------+----------+
+  | ORD-20260508-0001  | S-001    | 삼성전자 파운드리 | 200      | RESERVED |
+  ...
   총 3건
 ```
 
@@ -50,11 +45,16 @@ monitor.run(dataProvider);
 
 **커맨드라인 (MSVC)**
 ```bat
-cl /std:c++17 /EHsc src/main.cpp src/monitor/ConsoleMonitor.cpp src/monitor/TableRenderer.cpp /Fe:DataMonitor.exe
+cl /std:c++17 /EHsc /I include src/main.cpp src/monitor/ConsoleMonitor.cpp src/monitor/TableRenderer.cpp /Fe:DataMonitor.exe
 ```
 
 ## 실행
 
 ```
-DataMonitor.exe [refresh_seconds]
+DataMonitor.exe [data_directory] [refresh_seconds]
 ```
+
+| 인자 | 기본값 |
+|------|--------|
+| data_directory | `data` |
+| refresh_seconds | `3` |
