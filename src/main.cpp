@@ -1,72 +1,84 @@
 #include <iostream>
-#include <fstream>
+#include <iomanip>
 #include <string>
-#include <filesystem>
-#include <nlohmann/json.hpp>
-#include "monitor/ConsoleMonitor.h"
+#include <chrono>
+#include <thread>
+#include <ctime>
+#include <conio.h>
+#include "monitor/SystemMonitor.h"
 
-namespace fs = std::filesystem;
-
-// JSON 배열 파일을 읽어 Section으로 변환
-Section loadSection(const std::string& filePath) {
-    Section section;
-    section.title = fs::path(filePath).filename().string();
-
-    std::ifstream f(filePath);
-    if (!f.is_open()) return section;
-
-    nlohmann::json data;
-    try { f >> data; } catch (...) { return section; }
-
-    if (data.empty() || !data[0].is_object()) return section;
-
-    // 첫 번째 객체의 키를 컬럼으로 사용
-    for (auto& [key, _] : data[0].items())
-        section.columns.push_back({key, key.size()});
-
-    // 각 행의 값 추출 및 컬럼 너비 계산
-    for (const auto& row : data) {
-        std::vector<std::string> cells;
-        for (size_t i = 0; i < section.columns.size(); ++i) {
-            std::string val = row.contains(section.columns[i].header)
-                ? row[section.columns[i].header].dump() : "-";
-            if (val.size() >= 2 && val.front() == '"' && val.back() == '"')
-                val = val.substr(1, val.size() - 2);
-            section.columns[i].width = std::max(section.columns[i].width, val.size());
-            cells.push_back(val);
-        }
-        section.rows.push_back(cells);
-    }
-
-    return section;
+std::string timestamp() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+    localtime_s(&tm, &t);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
+    return buf;
 }
 
-// data 디렉토리의 JSON 파일 전체를 읽어 Section 목록으로 반환
-std::vector<Section> readDataDir(const std::string& dataDir) {
-    std::vector<Section> sections;
-    if (!fs::exists(dataDir)) return sections;
+std::string stockLabel(StockStatus s) {
+    switch (s) {
+        case StockStatus::SURPLUS:  return "[여유]";
+        case StockStatus::SHORT:    return "[부족]";
+        case StockStatus::DEPLETED: return "[고갈]";
+    }
+    return "";
+}
 
-    std::vector<std::string> files;
-    for (const auto& entry : fs::directory_iterator(dataDir))
-        if (entry.path().extension() == ".json")
-            files.push_back(entry.path().string());
-    std::sort(files.begin(), files.end());
+void draw(const SystemMonitor& monitor) {
+    system("cls");
 
-    for (const auto& f : files)
-        sections.push_back(loadSection(f));
+    std::cout << "╔══════════════════════════════════════════════════╗\n";
+    std::cout << "║           시스템 모니터링 [실시간 현황]            ║\n";
+    std::cout << "╚══════════════════════════════════════════════════╝\n";
+    std::cout << "  갱신 시각 : " << timestamp() << "  [R] 즉시갱신  [Q] 종료\n\n";
 
-    return sections;
+    // 주문량 확인
+    std::cout << "[ 주문 현황 ]\n";
+    std::cout << "  +-----------+------+\n";
+    std::cout << "  | 상태      |  건수|\n";
+    std::cout << "  +-----------+------+\n";
+    for (const auto& o : monitor.getOrderSummary())
+        std::cout << "  | " << std::left  << std::setw(9) << o.status
+                  << " | " << std::right << std::setw(4) << o.count << " |\n";
+    std::cout << "  +-----------+------+\n\n";
+
+    // 재고량 확인
+    std::cout << "[ 재고 현황 ]\n";
+    std::cout << "  +--------+----------------------+--------+----------+--------+\n";
+    std::cout << "  | ID     | 시료명               |   재고 |   주문량 | 상태   |\n";
+    std::cout << "  +--------+----------------------+--------+----------+--------+\n";
+    for (const auto& s : monitor.getSampleStockInfo()) {
+        std::cout << "  | " << std::left  << std::setw(6)  << s.id
+                  << " | " << std::left  << std::setw(20) << s.name
+                  << " | " << std::right << std::setw(6)  << s.stock
+                  << " | " << std::right << std::setw(8)  << s.pendingQuantity
+                  << " | " << std::left  << std::setw(6)  << stockLabel(s.stockStatus)
+                  << " |\n";
+    }
+    std::cout << "  +--------+----------------------+--------+----------+--------+\n";
 }
 
 int main(int argc, char* argv[]) {
-    std::string dataDir = "data";
-    int refreshSeconds = 3;
+    std::string dataDir    = "data";
+    int refreshSeconds     = 3;
 
-    if (argc > 1) dataDir = argv[1];
+    if (argc > 1) dataDir       = argv[1];
     if (argc > 2) refreshSeconds = std::stoi(argv[2]);
 
-    ConsoleMonitor monitor(refreshSeconds);
-    monitor.run([&]() { return readDataDir(dataDir); });
+    SystemMonitor monitor(dataDir);
 
-    return 0;
+    while (true) {
+        draw(monitor);
+
+        for (int i = 0; i < refreshSeconds * 10; ++i) {
+            if (_kbhit()) {
+                char ch = static_cast<char>(_getch());
+                if (ch == 'Q' || ch == 'q') { std::cout << "\n종료합니다.\n"; return 0; }
+                if (ch == 'R' || ch == 'r') break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
 }

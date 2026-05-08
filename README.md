@@ -1,41 +1,60 @@
 # DataMonitor
 
-현재 저장된 데이터 상태를 콘솔에서 실시간 조회하는 관리자 도구
+주문 및 시료 재고 현황을 실시간으로 조회하는 관리자 도구
 
 ## 구조
 
 ```
 src/
 ├── monitor/
-│   ├── TableRenderer.h/.cpp   - 테이블 렌더링
-│   └── ConsoleMonitor.h/.cpp  - 화면 갱신 루프, 키입력 처리
-└── main.cpp                   - data/ 디렉토리 JSON 파일 읽기 → ConsoleMonitor 연결
+│   ├── SystemMonitor.h/.cpp  - 주문 현황 집계, 재고 상태 판정
+└── main.cpp                  - 화면 갱신 루프, 콘솔 출력
 include/
 └── nlohmann/json.hpp
 data/
-└── (모니터링 대상 JSON 파일 위치)
+└── orders.json / samples.json
 ```
 
-## 동작
+## 표시 정보
 
-- `data/` 디렉토리의 JSON 파일을 N초마다 다시 읽어 화면 갱신
-- 파일이 변경되면 다음 갱신 주기에 자동 반영
-- `[R]` 즉시 갱신 / `[Q]` 종료
+**주문 현황** — 상태별 건수 (REJECTED 제외)
+```
+RESERVED / CONFIRMED / PRODUCING / RELEASE
+```
+
+**재고 현황** — 시료별 재고 및 상태
+| 상태 | 조건 |
+|------|------|
+| 여유 | 재고 ≥ 활성 주문 합산 수량 |
+| 부족 | 0 < 재고 < 활성 주문 합산 수량 |
+| 고갈 | 재고 = 0 |
+
+## 실행 화면
 
 ```
-╔══════════════════════════════════════════╗
-║       Console Monitor [실시간 조회]       ║
-╚══════════════════════════════════════════╝
-  갱신 시각 : 2026-05-08 09:32:15
-  갱신 주기 : 3초  [R] 즉시갱신  [Q] 종료
+╔══════════════════════════════════════════════════╗
+║           시스템 모니터링 [실시간 현황]            ║
+╚══════════════════════════════════════════════════╝
+  갱신 시각 : 2026-05-08 09:32:15  [R] 즉시갱신  [Q] 종료
 
-[ orders.json ]
-  +--------------------+----------+------------------+----------+----------+
-  | orderId            | sampleId | customerName     | quantity | status   |
-  +--------------------+----------+------------------+----------+----------+
-  | ORD-20260508-0001  | S-001    | 삼성전자 파운드리 | 200      | RESERVED |
-  ...
-  총 3건
+[ 주문 현황 ]
+  +-----------+------+
+  | 상태      |  건수|
+  +-----------+------+
+  | RESERVED  |    3 |
+  | CONFIRMED |    8 |
+  | PRODUCING |    3 |
+  | RELEASE   |   18 |
+  +-----------+------+
+
+[ 재고 현황 ]
+  +--------+----------------------+--------+----------+--------+
+  | ID     | 시료명               |   재고 |   주문량 | 상태   |
+  +--------+----------------------+--------+----------+--------+
+  | S-001  | 실리콘 웨이퍼-8인치  |    480 |      200 | [여유] |
+  | S-003  | SiC 파워기판-6인치   |     30 |      470 | [부족] |
+  | S-005  | 산화막 웨이퍼-SiO2   |      0 |      500 | [고갈] |
+  +--------+----------------------+--------+----------+--------+
 ```
 
 ## 빌드
@@ -45,7 +64,7 @@ data/
 
 **커맨드라인 (MSVC)**
 ```bat
-cl /std:c++17 /EHsc /I include src/main.cpp src/monitor/ConsoleMonitor.cpp src/monitor/TableRenderer.cpp /Fe:DataMonitor.exe
+cl /std:c++17 /EHsc /I include src/main.cpp src/monitor/SystemMonitor.cpp /Fe:DataMonitor.exe
 ```
 
 ## 실행
@@ -53,8 +72,3 @@ cl /std:c++17 /EHsc /I include src/main.cpp src/monitor/ConsoleMonitor.cpp src/m
 ```
 DataMonitor.exe [data_directory] [refresh_seconds]
 ```
-
-| 인자 | 기본값 |
-|------|--------|
-| data_directory | `data` |
-| refresh_seconds | `3` |

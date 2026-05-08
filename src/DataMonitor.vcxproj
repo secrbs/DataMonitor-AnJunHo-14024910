@@ -81,13 +81,11 @@
 
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="monitor\ConsoleMonitor.cpp" />
-    <ClCompile Include="monitor\TableRenderer.cpp" />
+    <ClCompile Include="monitor\SystemMonitor.cpp" />
   </ItemGroup>
 
   <ItemGroup>
-    <ClInclude Include="monitor\ConsoleMonitor.h" />
-    <ClInclude Include="monitor\TableRenderer.h" />
+    <ClInclude Include="monitor\SystemMonitor.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
